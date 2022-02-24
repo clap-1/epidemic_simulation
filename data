@@ -1,0 +1,8 @@
+import csv
+f = open('infectedNum_trace.csv', 'w', newline = '')
+
+csv_writer = csv.writer(f)
+csv_writer.writerow(['trace','num'])
+csv_writer.writerow([[1,2,3],1])
+csv_writer.writerow([[2,2,3],1])
+f.close()
