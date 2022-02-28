@@ -10,8 +10,8 @@ from Region import Region_info
 
 # parameters
 travel_update = 14
-simulation_time = 30
-region_num = 4
+simulation_time = 30*14
+region_num = 5
 Persons_num = 1000*region_num
 region_width = 10
 region_length = 10
@@ -38,6 +38,13 @@ def check_if_contact(id, Persons, t):
         # 小于此半径才会有记录被感染，且码无论感染与否都会变红
         if (dis <= infect_radius):
             if (Persons[k].ret_state() == 'susceptible' and Persons[id].ret_state() == 'infected'):
+                '''
+                :为减小数据量，将追踪infected过去5天接触的人
+                :其家人，同组同事或者同班同学都被列为一级密接
+                :其在自由活动时间接触的人都被列为二级密接
+                :病患共处一个区域的其他人为三级密接，包括在自由场所接触的其他人但是与其大于传播距离的其他人
+                :此溯源机制在病患发病的一刻（即送往医院）触发，而不是在其得病的时间触发
+                '''
                 Persons[k].Sus_to_Exposed(t, id, Persons, Persons[k].age)
             elif (Persons[k].ret_state() == 'susceptible' and Persons[id].ret_state() == 'exposed'):
                 Persons[k].Sus_to_ci_Exposed(t, id, Persons, Persons[k].age)
@@ -70,6 +77,18 @@ def write_csv(path, data_row):
         csv_write = csv.writer(f)
         csv_write.writerow(data_row)
 
+def if_mobility(day, age, time):
+    if(day != 6 and day != 7):
+        if(time>=0 and time <= 9):
+            if(age >= 61):
+                return 'true'
+            else:
+                return 'false'
+        else:
+            return 'true'
+    else:
+        return 'true'
+    
 if __name__ == "__main__":
     '''
     1. 假设仿真时间定为白天的早上八点到晚上十点，其余时间人员不活动。
@@ -77,8 +96,8 @@ if __name__ == "__main__":
     3. 仿真时间以小时为单位，暂且定仿真时间为60天，即1440小时。
     4. 由于模拟小范围内的传播，仿真地点为学校，小区，公司，游乐场/公园等可以自由活动的地方。
     5. 仿真的人数要减少，可以减少到1000以下。
-    6. 在工作日，每天早上8点到下午5点，只有60岁以上的老年人，20-60岁的无业人士可以自由移动，
-       其余人群只有在上学或者在工作两种状态，只能在学校或者公司活动。
+    6. 在工作日，每天早上8点到下午5点，只有60岁以上的老年人，20-60岁的无业人士可以自由移动
+      （目前只考虑全部都有工作），其余人群只有在上学或者在工作两种状态，只能在学校或者公司活动。
        下午5点到晚上十点，所有人都可以自由移动，即可以进入公共场所。
     7. 在周末，所有人都可以自由移动。
     8. 仿真从0时刻开始，设定0时刻所有人都在家。
@@ -91,13 +110,19 @@ if __name__ == "__main__":
     # 初始化四个区域，参数为100,100的长和宽，初始人数均相同
     for k in range(0, region_num):
         region[k] = Region_info(region_width, region_length)
-    print(region)
     # 初始化人的信息
     Persons = {}
     Family = {}
     Class = {}
     Team = {}
     team_num = Persons_num*0.5//50
+    #存储每刻各区域的人员信息
+    Persons_region1 = []
+    Persons_region2 = []
+    Persons_region3 = []
+    Persons_region4 = []
+    #存储公园的人员位置
+    Position_record = []
     p = Persons_num / region_num
     for k in range(0, int(team_num)):
         Team[k] = team(k)
@@ -147,18 +172,26 @@ if __name__ == "__main__":
             Persons[k] = Person(k, 0, x, y, 'green', 'susceptible', sex, age,
                                 k - int(Persons_num * 0.75), None, None)
             Family[k - int(Persons_num * 0.75)].add_mem(k)
-        region[Persons[k].region].add_per(k)
+        region[Persons[k].region].add_per(k, 0, 0)
     # 初始化一个感染者,第一个感染者在五天后才就送入医院
     Persons[int(Persons_num*0.5)].Init_One_Infected()
+    print(Family[1].ret_family_mem())
+    print(Persons[int(Persons_num*0.5)].ret_if_ever_infected())
     # for k in range(0, 20):
     #     print(Class[k].ret_class_mem())
     # for k in range(0, 40):
     #     print(Team[k].ret_team_mem())
-    for t in range(0, simulation_time):
-        print(t, '--------')
+    for t in range(1, simulation_time+1):
+        #目前所处仿真时间的第几周
+        week = t//(14*7) + 1
+        #目前属于星期几
+        day = (t - (week - 1)*14*7)//14 + 1
+        tim = t%14
         for i in range(0, Persons_num):
-            Persons[i].Person_Info_Update(t)
+            Persons[i].Person_Info_Update(t, day, Persons[i].age, Family, Class, Team, Persons, region)
             Persons[i].Expo_ci_Expo_to_Sus(t)
+        Persons_region3.append(region[3].ret_pers_id())
+        Position_record.append(region[3].ret_pers_pos())
         for k in range(0, Persons_num):
             if (Persons[k].ret_state() == 'exposed' and Persons[k].ret_trans() == 'yes'):
                 check_if_contact(k, Persons, t)
@@ -166,14 +199,20 @@ if __name__ == "__main__":
             #     check_if_contact(k, Persons, t)
             elif (Persons[k].ret_state() == 'infected'):
                 check_if_contact(k, Persons, t)
-            Persons[k].change_pos(Persons[k].ret_region(), Persons[k].age)
-        # print('Time:', t, '-----------------------------', )
-        # for j in range(0, Persons_num):
-        #     if (Persons[j].ret_if_ever_infected() == 'yes'):
-        #         print(Persons[j].incubation_time, Persons[j].recover_time, Persons[j].ret_state(),
-        #               Persons[j].ret_health_code())
-        #         print(Persons[j].ret_went_reg())
-        #         print(Persons[j].ret_travel_rec())
+            mobility = if_mobility(day, Persons[k].age, tim)
+            if(mobility == 'true'):
+                Persons[k].change_pos(Persons[k].ret_region(), Persons[k].age, region)
+        print('Time:', t, '-----------------------------', )
+    for j in range(0, Persons_num):
+        # if (Persons[j].ret_if_ever_infected() == 'yes'):
+        #     print(Persons[j].incubation_time, Persons[j].recover_time, Persons[j].ret_state(),
+        #           j, Persons[j].ret_health_code())
+        #     print(Persons[j].ret_travel_rec())
+        print(Persons[j].ret_state(), j, Persons[j].ret_health_code(), Persons[j].CC_level)
+        print(Persons[j].ret_travel_rec())
+        
+    # print(Persons_region3)
+    # print(Position_record)
     # path = 'Lay1Network_new_new.csv'
     # for j in range(0, Persons_num):
     #     if(Persons[j].ret_if_ever_infected() == 'yes'):
