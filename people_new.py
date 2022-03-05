@@ -111,6 +111,11 @@ class Person(object):
         self.hosp_time_inte = None
         # 感染后恢复时间点
         self.recover_time = None
+        # 被隔离的时间
+        self.quarantine_time = None
+        # 出隔离的时间
+        self.out_quarantine_time = None
+        
     
     # 返回id
     def ret_id(self):
@@ -159,6 +164,9 @@ class Person(object):
     
     # 下一刻的region及坐标,传入参数为当前region
     def change_pos(self, iregion, age, region):
+        if(iregion == 4 or iregion == 5):
+            self.add_went_reg(iregion)
+            return
         prob = pos_change_rate(age)
         region_change_rate = prob[0]
         coordinate_change_rate = prob[1]
@@ -171,9 +179,8 @@ class Person(object):
                 self.region = reg_new
                 region[reg_new].add_per(self.id)
                 region[iregion].delete_per(self.id)
-            elif(iregion == 4):
-                return
-            else:
+            elif(iregion == 0 or iregion == 1
+                 or iregion == 2):
                 reg_new = 3
                 region[self.region].delete_per(self.id)
                 self.add_went_reg(reg_new)
@@ -197,14 +204,14 @@ class Person(object):
                     region[iregion].update_pos(self.id, x, y)
             
 
-    # sus->exposed后,潜伏期为2-14天，传入参数为此转换的时间,与感染者接触后成为密接
+    # sus->exposed后,潜伏期为2-7天，传入参数为此转换的时间,与感染者接触后成为密接
     def Sus_to_Exposed(self, t, id, Persons, age):
         self.state = 'exposed'
         self.affected_by = id
         r1 = rd.random()
         if (r1 <= infetcd_c(age)):
             Persons[id].Repro_num = Persons[id].Repro_num + 1
-            t1 = rd.randint(2*14, 14*14)
+            t1 = rd.randint(2*14, 7*14)
             self.incubation_time_inte = t1
             self.incubation_time = t
             self.infected_time = t + t1
@@ -234,7 +241,7 @@ class Person(object):
     
     ######################注：此处次密接的传播性和感染性都还未被刻画
 
-    # exp且被感染的人->infec后，治疗期为10天到30天
+    # exp且被感染的人->infec后，治疗期为5天到10天
     def Exposed_to_Infected(self, t):
         self.if_ever_infected = 'yes'
         self.trans = 'yes'
@@ -243,11 +250,15 @@ class Person(object):
         self.healthcode = 'red'
         self.infected_time = t
         self.hosp_time = self.infected_time + 2*14
-        t1 = rd.randint(10*14, 30*14)
+        t1 = rd.randint(5*14, 10*14)
         self.hosp_time_inte = t1
-        self.recover_time = t1 + self.hosp_time
+        n = (t1 + self.hosp_time)//14
+        if ((t1 + self.hosp_time)%14 == 0):
+            self.recover_time = n * 14
+        else:
+            self.recover_time = (n+1) * 14
         # 返回恢复时间点，此点后该者不具备传播性
-        return t1 + self.hosp_time
+        return self.recover_time
     
     def Infected_to_Recovered(self, t):
         self.trans = 'no'
@@ -260,55 +271,139 @@ class Person(object):
         self.healthcode = 'red'
         self.if_ever_infected = 'yes'
         self.infected_time = 0
-        self.hosp_time_inte = rd.randint(10*14, 30*14)
-        self.recover_time = 5*14 + self.hosp_time_inte
+        self.hosp_time_inte = rd.randint(5*14, 10*14)
+        self.hosp_time = 2*14
+        n = (self.hosp_time + self.hosp_time_inte) // 14
+        if ((self.hosp_time + self.hosp_time_inte) % 14 == 0):
+            self.recover_time = n * 14
+        else:
+            self.recover_time = (n + 1) * 14
     
-    def quarantine(self, region):
+    #隔离
+    def quarantine(self, region, t):
         #放入一个区域隔离，不再能自由活动
         region[self.region].delete_per(self.id)
         self.region = 4
+        self.add_went_reg(self.region)
         region[self.region].add_per(self.id)
+        self.state = 'close-contact'
+        self.quarantine_time = t
+        #隔离期为5天
+        n = (t + 5*14)//14
+        if ((t + 5*14)%14==0):
+            self.out_quarantine_time = n*14
+        else:
+            self.out_quarantine_time = (n+1) * 14
         
+    def out_quarantine(self, region):
+        region[self.region].delete_per(self.id)
+        self.region = 0
+        self.add_went_reg(self.region)
+        region[self.region].add_per(self.id)
+        self.state = 'susceptible'
+        
+    #入院
+    def hospital(self, region):
+        region[self.region].delete_per(self.id)
+        self.region = 5
+        self.add_went_reg(self.region)
+        region[self.region].add_per(self.id)
+        self.out_quarantine_time = None
+        self.state = 'hospital'
+        
+    #出院
+    def out_hospital(self, region):
+        region[5].delete_per(self.id)
+        self.region = 0
+        self.add_went_reg(self.region)
+        region[self.region].add_per(self.id)
+        self.state = 'recovered'
+        
+    #密接进入医院
+    def CC_hospital(self, t, region):
+        if(self.state == 'close-contact'):
+            if (self.hosp_time == t):
+                self.if_ever_infected = 'yes'
+                self.trans = 'yes'
+                self.state = 'hospital'
+                self.healthcode = 'red'
+                t1 = rd.randint(5 * 14, 10 * 14)
+                self.hosp_time_inte = t1
+                n = (t1 + self.hosp_time) // 14
+                if ((t1 + self.hosp_time) % 14 == 0):
+                    self.recover_time = n * 14
+                else:
+                    self.recover_time = (n + 1) * 14
+                region[self.region].delete_per(self.id)
+                self.region = 5
+                self.add_went_reg(self.region)
+                region[self.region].add_per(self.id)
+                self.out_quarantine_time = None
+                
+        
+    #每次时间更新，信息更新
     def Person_Info_Update(self, t, day, age, Family, Class, Team, Persons, region):
-        if (day != 6 and day != 7):
-            if (t%14 >= 0 and t%14 <= 9):
-                if (age <= 20):
-                    temp = self.region
-                    self.region = 2
-                    self.add_went_reg(self.region)
-                    region[self.region].add_per(self.id)
-                    region[temp].delete_per(self.id)
-                elif (age > 20 and age <=60):
-                    temp = self.region
-                    self.region = 1
-                    self.add_went_reg(self.region)
-                    region[self.region].add_per(self.id)
-                    region[temp].delete_per(self.id)
-        if (t%14 == 0):
-            temp = self.region
-            self.region = 0
-            region[self.region].add_per(self.id)
-            region[temp].delete_per(self.id)
-            self.add_went_reg(self.region)
+        # if(t >28 and t<50 and self.id == 3000):
+        #     print(self.state)
+        self.CC_hospital(t, region)
+        if(self.state != 'close-contact' and self.state != 'hospital'):
+            if (day != 6 and day != 7):
+                if (t%14 >= 0 and t%14 <= 9):
+                    if (age <= 20):
+                        temp = self.region
+                        self.region = 2
+                        self.add_went_reg(self.region)
+                        region[self.region].add_per(self.id)
+                        region[temp].delete_per(self.id)
+                    elif (age > 20 and age <=60):
+                        temp = self.region
+                        self.region = 1
+                        self.add_went_reg(self.region)
+                        region[self.region].add_per(self.id)
+                        region[temp].delete_per(self.id)
+            if (t%14 == 0):
+                temp = self.region
+                self.region = 0
+                region[self.region].add_per(self.id)
+                region[temp].delete_per(self.id)
+                self.add_went_reg(self.region)
         if (t == self.infected_time):
-            #隔离
+            self.Exposed_to_Infected(t)
+            #隔离，若其状态已经infected，则不被隔离
             family_id = self.family_id
             for k in Family[family_id].ret_family_mem():
-                Persons[k].quarantine(region)
-                Persons[k].CC_level_change(1)
+                if(Persons[k].ret_state() != 'infected' and
+                   Persons[k].ret_state() != 'hospital' and
+                   Persons[k].ret_state() != 'close-contact' and
+                   k != self.id):
+                    Persons[k].quarantine(region, t)
+                    Persons[k].CC_level_change(1)
             if (self.class_id != None):
                 class_id = self.class_id
                 for k in Class[class_id].ret_class_mem():
-                    Persons[k].quarantine(region)
-                    Persons[k].CC_level_change(1)
+                    if (Persons[k].ret_state() != 'infected' and
+                        Persons[k].ret_state() != 'hospital' and
+                        Persons[k].ret_state() != 'close-contact' and
+                        k != self.id):
+                        Persons[k].quarantine(region, t)
+                        Persons[k].CC_level_change(1)
             if (self.business_id != None):
                 busi_id = self.business_id
                 for k in Team[busi_id].ret_team_mem():
-                    Persons[k].quarantine(region)
-                    Persons[k].CC_level_change(1)
-            self.Exposed_to_Infected(t)
+                    if (Persons[k].ret_state() != 'infected' and
+                        Persons[k].ret_state() != 'hospital' and
+                        Persons[k].ret_state() != 'close-contact' and
+                        k != self.id):
+                        Persons[k].quarantine(region, t)
+                        Persons[k].CC_level_change(1)
+        if (t == self.hosp_time):
+            self.hospital(region)
         if (t == self.recover_time):
+            self.out_hospital(region)
             self.Infected_to_Recovered(t)
+        if (t == self.out_quarantine_time):
+            #if (self.state == 'close-contact'):
+            self.out_quarantine(region)
 
     # 虽然是密接或者次密接，但是其没感染病毒,在确定为次密接或者密接七天后恢复为susceptible
     def Expo_ci_Expo_to_Sus(self, t):

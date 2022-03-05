@@ -10,8 +10,8 @@ from Region import Region_info
 
 # parameters
 travel_update = 14
-simulation_time = 30*14
-region_num = 5
+simulation_time = 20*14
+region_num = 6
 Persons_num = 1000*region_num
 region_width = 10
 region_length = 10
@@ -25,30 +25,59 @@ infc_c = 0.9
 
 
 # 若此person患病，则检查其圆域范围内的其他人，将其他人标记为
-def check_if_contact(id, Persons, t):
+def check_if_contact(id, Persons, t, Family, Team, Class):
     x = Persons[id].x
     y = Persons[id].y
     reg = Persons[id].region
-    for k in region[reg].ret_id():
-        if (k == id):
-            continue
-        cur_x = Persons[k].x
-        cur_y = Persons[k].y
-        dis = ((cur_x - x) ** 2 + (cur_y - y) ** 2) ** 0.5
-        # 小于此半径才会有记录被感染，且码无论感染与否都会变红
-        if (dis <= infect_radius):
-            if (Persons[k].ret_state() == 'susceptible' and Persons[id].ret_state() == 'infected'):
-                '''
-                :为减小数据量，将追踪infected过去5天接触的人
-                :其家人，同组同事或者同班同学都被列为一级密接
-                :其在自由活动时间接触的人都被列为二级密接
-                :病患共处一个区域的其他人为三级密接，包括在自由场所接触的其他人但是与其大于传播距离的其他人
-                :此溯源机制在病患发病的一刻（即送往医院）触发，而不是在其得病的时间触发
-                '''
-                Persons[k].Sus_to_Exposed(t, id, Persons, Persons[k].age)
-            elif (Persons[k].ret_state() == 'susceptible' and Persons[id].ret_state() == 'exposed'):
-                Persons[k].Sus_to_ci_Exposed(t, id, Persons, Persons[k].age)
-
+    #若在公共场合则检查传播半径，若在其余区域则传播给家人，同学，或同事
+    if (reg == 3):
+        for k in region[reg].ret_id():
+            if (k == id):
+                continue
+            cur_x = Persons[k].x
+            cur_y = Persons[k].y
+            dis = ((cur_x - x) ** 2 + (cur_y - y) ** 2) ** 0.5
+            # 小于此半径才会有记录被感染，且码无论感染与否都会变红
+            if (dis <= infect_radius):
+                if (Persons[k].ret_state() == 'susceptible' and Persons[id].ret_state() == 'infected'):
+                    '''
+                    :为减小数据量，将追踪infected过去5天接触的人
+                    :其家人，同组同事或者同班同学都被列为一级密接
+                    :其在自由活动时间接触的人都被列为二级密接
+                    :病患共处一个区域的其他人为三级密接，包括在自由场所接触的其他人但是与其大于传播距离的其他人
+                    :此溯源机制在病患发病的一刻（即送往医院）触发，而不是在其得病的时间触发
+                    '''
+                    Persons[k].Sus_to_Exposed(t, id, Persons, Persons[k].age)
+                elif (Persons[k].ret_state() == 'susceptible' and Persons[id].ret_state() == 'exposed'):
+                    Persons[k].Sus_to_ci_Exposed(t, id, Persons, Persons[k].age)
+    else:
+        if(Persons[id].family_id != None):
+            family_id = Persons[id].family_id
+            for k in Family[family_id].ret_family_mem():
+                if (k == id):
+                    continue
+                if (Persons[k].ret_state() == 'susceptible' and Persons[id].ret_state() == 'infected'):
+                    Persons[k].Sus_to_Exposed(t, id, Persons, Persons[k].age)
+        if (Persons[id].class_id != None):
+            class_id = Persons[id].class_id
+            for k in Class[class_id].ret_class_mem():
+                if (k == id):
+                    continue
+                if (Persons[k].ret_state() == 'susceptible' and Persons[id].ret_state() == 'infected'):
+                    Persons[k].Sus_to_Exposed(t, id, Persons, Persons[k].age)
+        if (Persons[id].business_id != None):
+            busi_id = Persons[id].business_id
+            for k in Team[busi_id].ret_team_mem():
+                if (k == id):
+                    continue
+                if (Persons[k].ret_state() == 'susceptible' and Persons[id].ret_state() == 'infected'):
+                    Persons[k].Sus_to_Exposed(t, id, Persons, Persons[k].age)
+                    
+        
+        
+    
+    
+    
 def trans_risk(repro_num):
     if(repro_num <= 2):
         return 1
@@ -81,14 +110,65 @@ def if_mobility(day, age, time):
     if(day != 6 and day != 7):
         if(time>=0 and time <= 9):
             if(age >= 61):
-                return 'true'
+                return 1
             else:
-                return 'false'
+                return 0
         else:
-            return 'true'
+            return 1
     else:
-        return 'true'
+        return 1
+#如果已经住院或者已经成为密接则不能活动
+def if_quan_hosp(id, Persons):
+    if (Persons[id].state == 'hospital' or
+        Persons[id].state == 'close-contact'):
+        return 0
+    else:
+        return 1
+  
+#找到感染者过去五天接触的人群，除了其家人，同事，同学，因为这些人已经被定义为密接1
+#此函数是为了找出在同一时间与感染者在同一公共场合活动的人，小于距离阈值的人被定义为密接2，大于阈值的被定义为密接3
+def Find_Other_Contact(id, Persons, t, Family, Team, Class, Persons_region3, region):
+    #在感染者被送入医院的时间往前追溯五天
+    if (t == Persons[id].hosp_time):
+        if (t - 5*14 > 0):
+            t_start = t - 5*14
+        else:
+            t_start = 1
+        for i in range(t_start, t):
+            if (id in Persons_region3[i]):
+                for j in Persons_region3[i]:
+                    x = Persons[id].x
+                    y = Persons[id].y
+                    if (j == id):
+                        continue
+                    cur_x = Persons[j].x
+                    cur_y = Persons[j].y
+                    dis = ((cur_x - x) ** 2 + (cur_y - y) ** 2) ** 0.5
+                    # 小于此半径才会有记录被感染，且码无论感染与否都会变红
+                    if (dis <= infect_radius):
+                        if (Persons[j].ret_state() == 'susceptible' and Persons[id].ret_state() == 'infected'):
+                            '''
+                            :为减小数据量，将追踪infected过去5天接触的人
+                            :其家人，同组同事或者同班同学都被列为一级密接
+                            :其在自由活动时间接触的人都被列为二级密接
+                            :病患共处一个区域的其他人为三级密接，包括在自由场所接触的其他人但是与其大于传播距离的其他人
+                            :此溯源机制在病患发病的一刻（即送往医院）触发，而不是在其得病的时间触发
+                            '''
+                            Persons[j].quarantine(region, t)
+                            Persons[j].CC_level_change(2)
+                    else:
+                        if (Persons[j].ret_state() == 'susceptible' and Persons[id].ret_state() == 'infected'):
+                            '''
+                            :为减小数据量，将追踪infected过去5天接触的人
+                            :其家人，同组同事或者同班同学都被列为一级密接
+                            :其在自由活动时间接触的人都被列为二级密接
+                            :病患共处一个区域的其他人为三级密接，包括在自由场所接触的其他人但是与其大于传播距离的其他人
+                            :此溯源机制在病患发病的一刻（即送往医院）触发，而不是在其得病的时间触发
+                            '''
+                            Persons[j].CC_level_change(3)
     
+    
+ 
 if __name__ == "__main__":
     '''
     1. 假设仿真时间定为白天的早上八点到晚上十点，其余时间人员不活动。
@@ -173,43 +253,42 @@ if __name__ == "__main__":
                                 k - int(Persons_num * 0.75), None, None)
             Family[k - int(Persons_num * 0.75)].add_mem(k)
         region[Persons[k].region].add_per(k, 0, 0)
-    # 初始化一个感染者,第一个感染者在五天后才就送入医院
+    # 初始化一个感染者,第一个感染者在2天后才就送入医院
     Persons[int(Persons_num*0.5)].Init_One_Infected()
-    print(Family[1].ret_family_mem())
-    print(Persons[int(Persons_num*0.5)].ret_if_ever_infected())
     # for k in range(0, 20):
     #     print(Class[k].ret_class_mem())
     # for k in range(0, 40):
     #     print(Team[k].ret_team_mem())
     for t in range(1, simulation_time+1):
+        print('Time:', t, '-----------------------------', )
         #目前所处仿真时间的第几周
         week = t//(14*7) + 1
         #目前属于星期几
         day = (t - (week - 1)*14*7)//14 + 1
         tim = t%14
+        temp = []
         for i in range(0, Persons_num):
             Persons[i].Person_Info_Update(t, day, Persons[i].age, Family, Class, Team, Persons, region)
-            Persons[i].Expo_ci_Expo_to_Sus(t)
+            # Persons[i].Expo_ci_Expo_to_Sus(t)
         Persons_region3.append(region[3].ret_pers_id())
         Position_record.append(region[3].ret_pers_pos())
         for k in range(0, Persons_num):
             if (Persons[k].ret_state() == 'exposed' and Persons[k].ret_trans() == 'yes'):
-                check_if_contact(k, Persons, t)
+                check_if_contact(k, Persons, t, Family, Team, Class)
             # elif (Persons[k].ret_state() == 'ci-exposed' and Persons[k].ret_trans() == 'yes'):
             #     check_if_contact(k, Persons, t)
             elif (Persons[k].ret_state() == 'infected'):
-                check_if_contact(k, Persons, t)
-            mobility = if_mobility(day, Persons[k].age, tim)
-            if(mobility == 'true'):
-                Persons[k].change_pos(Persons[k].ret_region(), Persons[k].age, region)
-        print('Time:', t, '-----------------------------', )
-    for j in range(0, Persons_num):
-        # if (Persons[j].ret_if_ever_infected() == 'yes'):
-        #     print(Persons[j].incubation_time, Persons[j].recover_time, Persons[j].ret_state(),
-        #           j, Persons[j].ret_health_code())
-        #     print(Persons[j].ret_travel_rec())
-        print(Persons[j].ret_state(), j, Persons[j].ret_health_code(), Persons[j].CC_level)
-        print(Persons[j].ret_travel_rec())
+                check_if_contact(k, Persons, t, Family, Team, Class)
+            # mobility = (if_mobility(day, Persons[k].age, tim)) * (if_quan_hosp(k, Persons))
+            # if(mobility == 1):
+            Persons[k].change_pos(Persons[k].ret_region(), Persons[k].age, region)
+    # for j in range(0, Persons_num):
+    #     # if (Persons[j].ret_if_ever_infected() == 'yes'):
+    #     #     print(Persons[j].incubation_time, Persons[j].recover_time, Persons[j].ret_state(),
+    #     #           j, Persons[j].ret_health_code())
+    #     #     print(Persons[j].ret_travel_rec())
+    #     print(Persons[j].ret_state(), j, Persons[j].ret_health_code(), Persons[j].CC_level)
+    #     print(Persons[j].ret_travel_rec())
         
     # print(Persons_region3)
     # print(Position_record)
