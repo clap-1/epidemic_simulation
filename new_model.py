@@ -1,3 +1,4 @@
+import copy
 import random
 import csv
 import numpy as np
@@ -10,7 +11,7 @@ from Region import Region_info
 
 # parameters
 travel_update = 14
-simulation_time = 20*14
+simulation_time = 30*14
 region_num = 6
 Persons_num = 1000*region_num
 region_width = 10
@@ -134,7 +135,7 @@ def Find_Other_Contact(id, Persons, t, Family, Team, Class, Persons_region3, reg
             t_start = t - 5*14
         else:
             t_start = 1
-        for i in range(t_start, t):
+        for i in range(t_start - 1, t):
             if (id in Persons_region3[i]):
                 for j in Persons_region3[i]:
                     x = Persons[id].x
@@ -146,7 +147,7 @@ def Find_Other_Contact(id, Persons, t, Family, Team, Class, Persons_region3, reg
                     dis = ((cur_x - x) ** 2 + (cur_y - y) ** 2) ** 0.5
                     # 小于此半径才会有记录被感染，且码无论感染与否都会变红
                     if (dis <= infect_radius):
-                        if (Persons[j].ret_state() == 'susceptible' and Persons[id].ret_state() == 'infected'):
+                        if (Persons[j].ret_state() == 'susceptible' and Persons[id].ret_state() == 'hospital'):
                             '''
                             :为减小数据量，将追踪infected过去5天接触的人
                             :其家人，同组同事或者同班同学都被列为一级密接
@@ -157,7 +158,7 @@ def Find_Other_Contact(id, Persons, t, Family, Team, Class, Persons_region3, reg
                             Persons[j].quarantine(region, t)
                             Persons[j].CC_level_change(2)
                     else:
-                        if (Persons[j].ret_state() == 'susceptible' and Persons[id].ret_state() == 'infected'):
+                        if (Persons[j].ret_state() == 'susceptible' and Persons[id].ret_state() == 'hospital'):
                             '''
                             :为减小数据量，将追踪infected过去5天接触的人
                             :其家人，同组同事或者同班同学都被列为一级密接
@@ -165,10 +166,11 @@ def Find_Other_Contact(id, Persons, t, Family, Team, Class, Persons_region3, reg
                             :病患共处一个区域的其他人为三级密接，包括在自由场所接触的其他人但是与其大于传播距离的其他人
                             :此溯源机制在病患发病的一刻（即送往医院）触发，而不是在其得病的时间触发
                             '''
+                            Persons[j].state = 'close-contact'
                             Persons[j].CC_level_change(3)
     
     
- 
+
 if __name__ == "__main__":
     '''
     1. 假设仿真时间定为白天的早上八点到晚上十点，其余时间人员不活动。
@@ -261,6 +263,7 @@ if __name__ == "__main__":
     #     print(Team[k].ret_team_mem())
     for t in range(1, simulation_time+1):
         print('Time:', t, '-----------------------------', )
+        # print('1', Persons_region3)
         #目前所处仿真时间的第几周
         week = t//(14*7) + 1
         #目前属于星期几
@@ -269,26 +272,25 @@ if __name__ == "__main__":
         temp = []
         for i in range(0, Persons_num):
             Persons[i].Person_Info_Update(t, day, Persons[i].age, Family, Class, Team, Persons, region)
-            # Persons[i].Expo_ci_Expo_to_Sus(t)
-        Persons_region3.append(region[3].ret_pers_id())
-        Position_record.append(region[3].ret_pers_pos())
         for k in range(0, Persons_num):
-            if (Persons[k].ret_state() == 'exposed' and Persons[k].ret_trans() == 'yes'):
+            if (Persons[k].ret_state() == 'infected'):
                 check_if_contact(k, Persons, t, Family, Team, Class)
-            # elif (Persons[k].ret_state() == 'ci-exposed' and Persons[k].ret_trans() == 'yes'):
-            #     check_if_contact(k, Persons, t)
-            elif (Persons[k].ret_state() == 'infected'):
-                check_if_contact(k, Persons, t, Family, Team, Class)
+                
             # mobility = (if_mobility(day, Persons[k].age, tim)) * (if_quan_hosp(k, Persons))
-            # if(mobility == 1):
+            # sif(mobility == 1):
             Persons[k].change_pos(Persons[k].ret_region(), Persons[k].age, region)
-    # for j in range(0, Persons_num):
-    #     # if (Persons[j].ret_if_ever_infected() == 'yes'):
-    #     #     print(Persons[j].incubation_time, Persons[j].recover_time, Persons[j].ret_state(),
-    #     #           j, Persons[j].ret_health_code())
-    #     #     print(Persons[j].ret_travel_rec())
-    #     print(Persons[j].ret_state(), j, Persons[j].ret_health_code(), Persons[j].CC_level)
-    #     print(Persons[j].ret_travel_rec())
+        list1 = copy.deepcopy(region[3].pers_id)
+        Persons_region3.append(list1)
+        Position_record.append(region[3].ret_pers_pos())
+        for i in range(0, Persons_num):
+            Find_Other_Contact(i, Persons, t, Family, Team, Class, Persons_region3, region)
+    for j in range(0, Persons_num):
+        # if (Persons[j].ret_if_ever_infected() == 'yes'):
+        #     print(Persons[j].incubation_time, Persons[j].recover_time, Persons[j].ret_state(),
+        #           j, Persons[j].ret_health_code())
+        #     print(Persons[j].ret_travel_rec())
+        print(Persons[j].ret_state(), j, Persons[j].ret_health_code(), Persons[j].CC_level)
+        print(Persons[j].ret_travel_rec())
         
     # print(Persons_region3)
     # print(Position_record)

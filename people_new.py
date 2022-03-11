@@ -57,16 +57,16 @@ def infetcd_c(age):
 # 不同年龄段人群的位置转移概率，在此模型假设下，假设每个人在自由转移状态下，只会转移到公共场所，在公共场所自由活动的能力都相同都为0.2
 def pos_change_rate(age):
     if (6 <= age <= 20):
-        region_change_pro = 0.1
-        coordinate_change_pro = 0.5
+        region_change_pro = 0.01
+        coordinate_change_pro = 0.05
         return [region_change_pro, coordinate_change_pro]
     elif (21 <= age <= 60):
-        region_change_pro = 0.2
-        coordinate_change_pro = 0.5
+        region_change_pro = 0.03
+        coordinate_change_pro = 0.1
         return [region_change_pro, coordinate_change_pro]
     elif (61 <= age <= 80):
-        region_change_pro = 0.1
-        coordinate_change_pro = 0.5
+        region_change_pro = 0.01
+        coordinate_change_pro = 0.05
         return [region_change_pro, coordinate_change_pro]
 
 
@@ -84,7 +84,7 @@ class Person(object):
         self.x = x
         self.y = y
         #密接等级
-        self.CC_level = None
+        self.CC_level = 0
         #成为exposed或者成为infected的源头，即感染此人的患者的id
         self.affected_by = None
         self.healthcode = healthcode
@@ -301,6 +301,7 @@ class Person(object):
         self.add_went_reg(self.region)
         region[self.region].add_per(self.id)
         self.state = 'susceptible'
+        self.CC_level_change(0)
         
     #入院
     def hospital(self, region):
@@ -310,6 +311,7 @@ class Person(object):
         region[self.region].add_per(self.id)
         self.out_quarantine_time = None
         self.state = 'hospital'
+        self.CC_level_change(0)
         
     #出院
     def out_hospital(self, region):
@@ -318,6 +320,7 @@ class Person(object):
         self.add_went_reg(self.region)
         region[self.region].add_per(self.id)
         self.state = 'recovered'
+        self.CC_level_change(0)
         
     #密接进入医院
     def CC_hospital(self, t, region):
@@ -339,6 +342,7 @@ class Person(object):
                 self.add_went_reg(self.region)
                 region[self.region].add_per(self.id)
                 self.out_quarantine_time = None
+                self.CC_level_change(0)
                 
         
     #每次时间更新，信息更新
@@ -425,9 +429,12 @@ class Person(object):
             self.recover_time = None
     
     def CC_level_change(self, level):
-        if (self.CC_level == None):
+        if (level == 0):
             self.CC_level = level
         else:
-            if (self.CC_level > level):
+            if (self.CC_level == 0):
                 self.CC_level = level
+            else:
+                if (self.CC_level > level):
+                    self.CC_level = level
             
