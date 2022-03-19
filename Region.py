@@ -2,12 +2,15 @@
 #每个区域里的信息
 class Region_info(object):
     #width,length分别为区域宽和长，per_num为该区域人数
-    def __init__(self, width, length):
+    def __init__(self, width, length, density = 0, commercial = 0, health = 0):
         self.width = width
         self.length = length
         self.pers_num = 0
         self.pers_id = []
         self.pers_pos = []
+        self.density = density
+        self.commercial = commercial
+        self.health = health
     
     #返回该区域人的id
     def ret_id(self):
