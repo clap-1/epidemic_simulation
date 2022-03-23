@@ -214,6 +214,7 @@ class Person(object):
             return self.trans
         else:
             self.trans = 'no'
+            self.ci_expo_expo_to_sus_time = t + 5*24
             return self.trans
     
     # 与密接者接触后成为次密接
@@ -250,10 +251,6 @@ class Person(object):
         # 返回恢复时间点，此点后该者不具备传播性
         return self.recover_time
     
-    def Infected_to_Recovered(self, t):
-        self.trans = 'no'
-        self.healthcode = 'green'
-        self.state = 'recovered'
     
     # 在0时刻初始化一个感染者，其在五天后被送入医院
     def Init_One_Infected(self):
@@ -333,29 +330,29 @@ class Person(object):
             self.hospital(region)
         if (t == self.recover_time):
             self.out_hospital(region)
-            self.Infected_to_Recovered(t)
+        if (t == self.ci_expo_expo_to_sus_time):
+            self.Expo_ci_Expo_to_Sus(t)
         # if (t == self.out_quarantine_time):
         #     # if (self.state == 'close-contact'):
         #     self.out_quarantine(region)
     
-    # 虽然是密接或者次密接，但是其没感染病毒,在确定为次密接或者密接七天后恢复为susceptible
+    # 虽然是密接或者次密接，但是其没感染病毒,在确定为次密接或者密接5天后恢复为susceptible
     def Expo_ci_Expo_to_Sus(self, t):
-        if (t == self.ci_expo_expo_to_sus_time):
-            self.healthcode = 'green'
-            # state为susceptible, exposed, infected, recovered四种
-            self.state = 'susceptible'
-            # sus->expos后的潜伏时间
-            self.incubation_time_inte = None
-            # sus->expos的时间点
-            self.incubation_time = None
-            # 感染时间点
-            self.infected_time = None
-            # 感染后两天之内送入医院
-            self.hosp_time = None
-            # 感染后治疗恢复所用时间
-            self.hosp_time_inte = None
-            # 感染后恢复时间点
-            self.recover_time = None
+        self.healthcode = 'green'
+        # state为susceptible, exposed, infected, recovered四种
+        self.state = 'susceptible'
+        # sus->expos后的潜伏时间
+        self.incubation_time_inte = None
+        # sus->expos的时间点
+        self.incubation_time = None
+        # 感染时间点
+        self.infected_time = None
+        # 感染后两天之内送入医院
+        self.hosp_time = None
+        # 感染后治疗恢复所用时间
+        self.hosp_time_inte = None
+        # 感染后恢复时间点
+        self.recover_time = None
     
     def CC_level_change(self, level):
         if (level == 0):

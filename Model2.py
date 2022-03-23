@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 #人口密度大的地方，越容易得病
 Population_Density = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.2]
 #商业化程度越高的地方，活动性越强，越容易感染
-Commercial_Degree = [5, 4, 6, 4, 7, 2, 3, 6, 9]
+Commercial_Degree = [2, 1, 3, 5, 2, 2, 3, 4, 4]
 #卫生水平高的区域不容易得病
 Health_Level = [2, 3, 4, 2, 3, 2, 3, 2, 5]
 
@@ -23,7 +23,7 @@ Persons_num = 15000
 region_width = 10
 region_length = 10
 
-infect_radius = 0.05
+infect_radius = 0.2
 
 # 检查是否与患者接触
 def check_if_contact(id, Persons, t, region):
@@ -76,7 +76,31 @@ def write_csv(path, data_row):
         csv_write = csv.writer(f)
         csv_write.writerow(data_row)
 
+#将RGB值转化为十六进制，输入形式为'R,G,B'
+def RGB_to_Hex(rgb):            # 将RGB格式划分开来
+    color = '#'
+    for i in rgb:
+        i = int(i)
+        # 将R、G、B分别转化为16进制拼接转换并大写  hex() 函数用于将10进制整数转换成16进制，以字符串形式表示
+        color += str(hex(i))[-2:].replace('x', '0').upper()
+    return color
 
+#根据指标决定某一区域的颜色
+def Color_Choice(Infec_Expo_Num):
+    R = 255-5*Infec_Expo_Num if 255-5*Infec_Expo_Num >=0 else 0
+    G = 150-3*Infec_Expo_Num if 255-5*Infec_Expo_Num >=0 else 0
+    B = 50- Infec_Expo_Num if 255-5*Infec_Expo_Num >=0 else 0
+    return RGB_to_Hex([R,G,B])
+    # if (Infec_Expo_Num <= 5):
+    #     return "#FFEBCD"
+    # elif (5 < Infec_Expo_Num <= 10):
+    #     return "#FFA07A"
+    # elif (10 < Infec_Expo_Num <= 30):
+    #     return "#FF4040"
+    # else:
+    #     return "#8B1A1A"
+    
+    
 if __name__ == "__main__":
     # 初始化
     region = {}
@@ -110,7 +134,7 @@ if __name__ == "__main__":
         else:
             age = random.randint(21, 60)
         Persons[k] = Person(k, r, x, y, 'green', 'susceptible', sex, age)
-        region[Persons[k].region].add_per(k)
+        region[Persons[k].region].add_per(k, x, y)
     # 初始化一个感染者,第一个感染者在五天后才就送入医院
     Persons[0].Init_One_Infected()
     Infected_Count = [0 for _ in range(9)]
@@ -123,14 +147,15 @@ if __name__ == "__main__":
                 check_if_contact(k, Persons, t, region)
             #加一个判断目前是否能移动的函数
             Persons[k].change_pos(Persons[k].ret_region(), Persons[k].age, region)
-        i = 0
         for i in range(9):
             for j in region[i].ret_id():
                 if (Persons[j].state == 'infected'):
                     Infected_Count[i] += 1
-                if (Persons[j].state == 'exposed'):
-                    Infected_Count[i] += 0.2
-        print(Infected_Count)
+                # if (Persons[j].state == 'exposed'):
+                #     Infected_Count[i] += 0.1
+        for i in range(9):
+            Infected_Count[i] = Infected_Count[i]*Commercial_Degree[i]/Health_Level[i]
+        print(Infected_Count, region[9].ret_id())
         plt.ion()
         labels = ['1' + '\n Transmission_Risk: \n' + str(Infected_Count[0]),
                   '2' + '\n Transmission_Risk: \n' + str(Infected_Count[1]),
@@ -142,11 +167,11 @@ if __name__ == "__main__":
                   '8' + '\n Transmission_Risk: \n' + str(Infected_Count[7]),
                   '9' + '\n Transmission_Risk: \n' + str(Infected_Count[8])]
         #color = plt.cm.Spectral([1 for _ in range(9)])
-        colors = [plt.cm.Spectral(i / float(len(labels))) for i in range(len(labels))]
+        colors = [Color_Choice(Infected_Count[i]) for i in range(9)]
         color = ['blue' for _ in range(9)]
         # for i in range(9):
         #     color.append(1)
-        squarify.plot(sizes=(8, 8, 8, 8, 8, 8, 8, 8, 8), label=labels, color=color, alpha=.8)
+        squarify.plot(sizes=(8, 8, 8, 8, 8, 8, 8, 8, 8), label=labels, color=colors, alpha=.8)
         plt.title('Treemap of Vechile Class')
         plt.axis('off')
         plt.pause(0.1)  # 暂停0.1秒
@@ -155,5 +180,5 @@ if __name__ == "__main__":
         Infected_Count = [0 for _ in range(9)]
     plt.ioff()
     plt.show()
-    #Plot
+    # #Plot
     
